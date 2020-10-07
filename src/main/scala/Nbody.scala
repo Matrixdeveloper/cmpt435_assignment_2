@@ -27,8 +27,8 @@ class Nbody extends Actor {
     val bodyData: Array[Array[Double]] = rawList.toArray.map(
       _.split(" ").map(_.toDouble))
 
-    val manager = context.system.actorOf(Props(new Manager(msg.outputPath, msg.numWorker,
-      msg.numWorker)), "Manager")
+    val manager = context.actorOf(Props(new Manager(msg.outputPath,
+      msg.numWorker,0)), "Manager")
     manager ! StartMessage(msg.numWorker, 0, numBody, msg.numDeltaTime,
       msg.DeltaTime, bodyData)
   }

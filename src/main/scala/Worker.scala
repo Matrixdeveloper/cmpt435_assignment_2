@@ -5,18 +5,26 @@
 //NSID: yuw857
 
 
-import akka.actor.Actor
+import akka.actor.{Actor, ActorRef}
 
 
-class Worker(var posData:Array[Array[Double]],
-             var velocityData:Array[Array[Double]],
-             val peers:Array[Worker], val myId:Int) extends Actor
+class Worker(var posData:Array[Array[Double]], var peers:Array[ActorRef],
+             val myId:Int) extends Actor
 {
   override def receive: Receive = {
     case TaskMessage =>
-      print("Worker");
-//    case BodyMessage(_,_,id) =>
-//      print("Worker: update %d info", id);
+      print("Worker")
 
+    case "Report" =>
+      context.sender ! posData
+
+    case "Done" =>
+      println(self.path.name+">>leave")
+      context.stop(self)
+
+    case ("Start", workerRefs:Array[ActorRef]) =>
+      peers = workerRefs
+      println(self.path.name+">>ready")
+      context.parent ! "Request"
   }
 }
