@@ -5,7 +5,6 @@
 //NSID: yuw857
 
 
-
 import akka.actor.Actor
 
 
@@ -16,8 +15,8 @@ class Worker(var posData:Array[Array[Double]],
   override def receive: Receive = {
     case TaskMessage =>
       print("Worker");
-    case BodyMessage(_,_,id) =>
-      print("Worker: update %d info", id);
+//    case BodyMessage(_,_,id) =>
+//      print("Worker: update %d info", id);
 
   }
 }

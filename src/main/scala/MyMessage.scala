@@ -7,54 +7,25 @@
 /**
  * Base class of my messages
  */
-abstract class MyMessage {
-  def sender: String
-  def recipient: String
+abstract class MyMessage {}
 
-}
 
-/**
- * Define the initial message format
- * @param sender
- * @param recipient
- * @param inputPath
- * @param outputPath
- * @param numDeltaTime
- * @param numWorker
- * @param DeltaTime
- */
-case class InitMessage(sender: String, recipient: String,
-                      inputPath: String, outputPath: String,
-                      numDeltaTime: Int, numWorker: Int,
-                      DeltaTime: Double) extends MyMessage
+case class InitMessage(inputPath: String, outputPath: String,
+                       numDeltaTime: Int, DeltaTime: Double,
+                       numWorker: Int) extends MyMessage
 
-/**
- * Define the message of manager send to worker
- * @param sender
- * @param recipient
- * @param taskID
- */
-case class TaskMessage(sender: String, recipient: String,
-                      taskID: Int, report: Boolean) extends MyMessage
 
-/**
- * Define peer messages between workers
- * @param sender
- * @param recipient
- * @param bodyID
- */
-case class BodyMessage(sender: String, recipient: String,
-                      bodyID: Int) extends MyMessage
+case class StartMessage(numWorker: Int, freeWorker:Int, numBody:Int,
+                        numInterval:Int, Interval:Double,
+                        data:Array[Array[Double]])
 
-/**
- * Define report format of worker
- * @param sender
- * @param recipient
- * @param curPostData
- * @param curVelocityData
- */
-case class ReportMessage(sender: String, recipient: String,
-                        curPostData:Array[Array[Double]],
-                        curVelocityData:Array[Array[Double]]) extends MyMessage
 
-case class EndMessage()
+case class TaskMessage(taskID: Int, report: Boolean) extends MyMessage
+
+case class BodyMessage(bodyID: Int) extends MyMessage
+
+
+case class ReportMessage(posData:Array[Array[Double]]) extends MyMessage
+
+
+case class EndMessage(outputPath:String,numBody:Int,finalResult:Array[Array[Double]])

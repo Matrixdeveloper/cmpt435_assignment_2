@@ -5,58 +5,55 @@
 //NSID: yuw857
 
 
+import java.io.{File, PrintWriter}
+import scala.io.Source
 import akka.actor._
 
-/**
- * The base class of Nbody program.
- * It is responsible for initialising program.
- */
-
 class Nbody extends Actor {
-
   override def receive: Receive = {
-    case a:InitMessage =>
-      print("manager: Receive Init Message");
-      initNbodySystem(a)
-
-    case a:EndMessage =>
-      print("manager: Receive result")
-
-    /**
-     * write out data and terminate system
-     */
-      context.system.terminate();
-    case _ =>
-      print("Nbody: unexpected message")
+    case a:InitMessage => init(a)
+    case b:EndMessage  => finish(b);
+    case _ => println("Nbody: unexpected message")
   }
 
-  def initNbodySystem(msg:InitMessage): Unit ={
+  def init(msg:InitMessage): Unit ={
+    println("Initializer Start")
+    val source = Source.fromFile(System.getProperty("user.dir")+
+      "/src/main/scala/"+msg.inputPath)
+    var rawList:List[String] = source.getLines().toList
+    source.close()
 
-    /**
-     * Read input data
-     * create workers and initialize with input data
-     * send tasks to workers && scheduling/balancing workload
-     * keep working
-     * wait for last task finish
-     * ask result from last worker
-     * Write result to output
-     */
+    val numBody = rawList.head.toInt;rawList = rawList.tail
+    val bodyData: Array[Array[Double]] = rawList.toArray.map(
+      _.split(" ").map(_.toDouble))
+
+    val manager = context.system.actorOf(Props(new Manager(msg.outputPath, msg.numWorker,
+      msg.numWorker)), "Manager")
+    manager ! StartMessage(msg.numWorker, 0, numBody, msg.numDeltaTime,
+      msg.DeltaTime, bodyData)
   }
 
-  def writeOut(msg:EndMessage): Unit ={
-
+  def finish(msg:EndMessage): Unit ={
+    val file = new PrintWriter(new File(System.getProperty("user.dir")+"/src" +
+      "/main/scala/"+msg.outputPath))
+    file.write(msg.numBody.toString+"\n")
+    var x = 0
+    msg.finalResult.foreach(row=>
+      if(x<msg.numBody-1){file.write(row.mkString(" ")+"\n");x+=1}
+      else file.write(row.mkString(" ")))
+    file.close()
+    println("Initializer End")
+    context.system.terminate()
   }
-
 }
 
-
 object MyTest extends App {
+  val inputFile = "myInput.txt";val outputFile = "sampleOutput.txt"
+  val interval = 1.0;val numInterval = 5; val numWorker = 4
   val actorSystem: ActorSystem = ActorSystem("NbodySystem")
-  val firstActor: ActorRef = actorSystem.actorOf(Props[Nbody], "InitActor")
-
-  firstActor ! EndMessage()
-
-
+  val firstActor: ActorRef = actorSystem.actorOf(Props[Nbody], "Initializer")
+  firstActor ! InitMessage(inputFile, outputFile, numInterval, interval,
+    numWorker)
 }
 
 

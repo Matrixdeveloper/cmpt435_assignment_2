@@ -5,19 +5,15 @@
 //NSID: yuw857
 
 
-
 import akka.actor.Actor
 
-class Manager(val workerList:Array[Worker], val inputPath:String,
-              val outputPath:String, var workerDone:Int) extends Actor
+class Manager(val outputPath:String, val numWorker:Int, var workerFree:Int)
+  extends Actor
 {
   override def receive: Receive = {
-    case "start" =>
-      print("Manager: Hello!")
-
-    /**
-     *  distribute task until all task finish
-     */
+    case a:StartMessage =>
+      println("Manager: Hello!")
+      context.sender() ! EndMessage(outputPath, a.numBody, a.data)
 
     case a : TaskMessage =>
       print("Manager: a worker is free")
