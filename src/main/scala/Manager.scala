@@ -11,33 +11,30 @@ import akka.util.Timeout
 
 import scala.concurrent.duration._
 
-class Manager(val outputPath:String, val numWorker:Int, var workerFree:Int)
+class Manager(val outputPath:String, val numWorker:Int, var workerFree:Int,
+             var Bags:Array[(Int,Int)], var BagIter: Int, var numDT:Int)
   extends Actor
 {
   override def receive: Receive = {
     case a:StartMessage => buildFrame(a)
-//      context.parent ! EndMessage(outputPath, a.numBody, a.data)
-    case "Request" => workerFree+=1;// control()
-      println(workerFree)
-      if(workerFree==numWorker) {
-        implicit val timeout: Timeout = Timeout(5.seconds )
-        val future = context.sender ? "Report"
-        val result = Await.result(future, timeout.duration).asInstanceOf[Array[Array[Double]]]
-        context.parent ! EndMessage(this.outputPath, result.length,result)
-        context.stop(self)
-      }
-
-
-    case _=>
-    print("Manager: unexpected message from"+ context.sender)
+    case "Request" => respond()
+    case _=> print("Manager: unexpected message from"+ context.sender)
   }
 
   def buildFrame(m:StartMessage): Unit =
   {
-    // create some worker
-    var worker=for(i<- 0 until this.numWorker)
-      yield context.actorOf(Props(new Worker(m.data,null,i)), "worker"
-        +i.toString)
+    // create task basket and initialize bag index
+    this.Bags =
+      (for(i<-0 until m.numBody/m.numWorker;
+           j<-0 until m.numBody/m.numWorker) yield(i,j))
+      .filter(p=>p._2>=p._1).toArray
+
+    this.BagIter = 0
+
+    // create workers
+    val worker=for(i<- 0 until this.numWorker)
+      yield context
+        .actorOf(Props(new Worker(m.data,null,i)), "worker" +i.toString)
 
     // activate worker
     val wArray = worker.toArray
@@ -45,10 +42,32 @@ class Manager(val outputPath:String, val numWorker:Int, var workerFree:Int)
     println("Manager: Frame Set Up")
   }
 
-  def control(): Unit =
+  def respond(): Unit =
   {
-    context.sender() ! "Done"
-//    workerFree-=1
-  }
+    workerFree+=1
+    // determine if all work have done
+    if(this.numDT==0 && this.workerFree==this.numWorker) {
+      implicit val timeout: Timeout = Timeout(5.seconds)
+      val future = context.sender ? "Report"
+      val result = Await
+        .result(future, timeout.duration)
+        .asInstanceOf[Array[Array[Double]]]
+      context.parent ! EndMessage(this.outputPath, result.length, result)
+      context.stop(self)
+    }
 
+    // wait for remaining work to be done
+    if(this.numDT==0 && this.BagIter==this.Bags.length){sender ! "Done";return}
+
+    // distribute bag
+    if(numDT>0 && this.BagIter==this.Bags.length){
+      this.BagIter = 0;this.numDT-=1;println("Manager: Next interval")
+    }
+    sender ! this.Bags(this.BagIter)
+    this.BagIter+=1
+    this.workerFree-=1
+  }
 }
+
+
+

@@ -12,8 +12,9 @@ class Worker(var posData:Array[Array[Double]], var peers:Array[ActorRef],
              val myId:Int) extends Actor
 {
   override def receive: Receive = {
-    case TaskMessage =>
-      print("Worker")
+    case (a:Int, b:Int) =>
+      println(self.path.name+"Receive "+(a,b).toString())
+      context.parent ! "Request"
 
     case "Report" =>
       context.sender ! posData
@@ -27,4 +28,14 @@ class Worker(var posData:Array[Array[Double]], var peers:Array[ActorRef],
       println(self.path.name+">>ready")
       context.parent ! "Request"
   }
+
+
+  def calculateFore(): Unit ={
+
+  }
+
+  def exchangeForce(): Unit ={
+
+  }
+
 }
