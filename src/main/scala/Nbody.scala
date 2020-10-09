@@ -29,7 +29,7 @@ class Nbody extends Actor {
 
     val manager = context.actorOf(Props(new Manager(msg.outputPath,
       msg.numWorker,0,null,0, msg.numDeltaTime)), "Manager")
-    manager ! StartMessage(2, 0, 8, msg.numDeltaTime,
+    manager ! StartMessage(msg.numWorker, 0, numBody, msg.numDeltaTime,
       msg.DeltaTime, bodyData)
   }
 
@@ -49,7 +49,7 @@ class Nbody extends Actor {
 
 object MyTest extends App {
   val inputFile = "myInput.txt";val outputFile = "sampleOutput.txt"
-  val interval = 1.0;val numInterval = 3; val numWorker = 2
+  val interval = 1.0;val numInterval = 5; val numWorker = 4
   val actorSystem: ActorSystem = ActorSystem("NbodySystem")
   val firstActor: ActorRef = actorSystem.actorOf(Props[Nbody], "Initializer")
   firstActor ! InitMessage(inputFile, outputFile, numInterval, interval,
