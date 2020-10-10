@@ -27,10 +27,10 @@ class Nbody extends Actor {
     val bodyData: Array[Array[Double]] = rawList.toArray.map(
       _.split(" ").map(_.toDouble))
 
-    val manager = context.actorOf(Props(new Manager(msg.outputPath,
-      msg.numWorker,0,null,0, msg.numDeltaTime)), "Manager")
-    manager ! StartMSG(msg.numWorker, 0, numBody, msg.numDeltaTime,
-      msg.DeltaTime, bodyData)
+    val manager = context.actorOf(Props(
+      new Manager(msg.outputPath,msg.numWorker,numBody,
+        0,null,0,msg.numDeltaTime)), "Manager")
+    manager ! StartMSG(bodyData, msg.DeltaTime)
   }
 
   def finish(msg:EndMSG): Unit ={

@@ -6,35 +6,43 @@
 
 import akka.actor._
 
-class Manager(val outputPath:String, val numWorker:Int, var workerFree:Int,
-             var Bags:Array[(Int,Int)], var BagIter: Int, var numDT:Int)
-  extends Actor
+class Manager(val outputPath:String, val numWorker:Int, val numBody:Int,
+              var workerFree:Int, var Bags:Array[(Int,Int)],
+              var BagIter: Int, var numDT:Int) extends Actor
 {
   override def receive: Receive = {
     case a:StartMSG => buildFrame(a)
     case RequestBlocksMSG => respond()
-    case WorkerReportMSG(b) =>
-      context.parent ! EndMSG(this.outputPath, b.length, b)
+    case WorkerReportMSG(final_mpvData) =>
+      context.parent ! EndMSG(this.outputPath,numBody, final_mpvData)
       context.stop(self)
-
     case _=> print("Manager: unexpected message from"+ context.sender)
   }
 
-  def buildFrame(m:StartMSG): Unit =
+  def buildFrame(initMsg:StartMSG): Unit =
   {
     // create task basket and initialize bag index
-    this.Bags = (for(i<-0 until m.numWorker;j<-0 until m.numWorker)
+    Bags = (for(i<-0 until numWorker; j<-0 until numWorker)
         yield(i,j)).filter(p=>p._2>=p._1).toArray
 
     // add sentinel indicate task of current interval have done
-    val sentinel = (for(_<- 1 to m.numWorker)yield (-1,-1)).toArray
-    this.Bags = this.Bags.concat(sentinel)
-    this.BagIter = 0
+    val sentinel = (for(_<- 1 to numWorker)yield (-1,-1)).toArray
+    Bags = Bags.concat(sentinel)
+    BagIter = 0
 
     // create workers
-    val worker=for(i<- 0 until this.numWorker)
-      yield context.actorOf(Props(new Worker(m.data, null, i,numWorker-1, 100,
-        Array.ofDim(m.numBody,3),Array.ofDim(m.numBody,7), m.Interval)), "worker"+i.toString)
+    val numWaitPeer = numWorker-1
+    val Gravity = 100
+    val dimension = 3
+    val row_length = 7
+    val worker=for(workerID<- 0 until numWorker)
+      yield context.actorOf(Props(
+        new Worker(initMsg.mpvdata, null,
+          workerID, numWaitPeer, Gravity,
+          Array.ofDim(numBody,dimension),
+          Array.ofDim(numBody,row_length),
+          initMsg.interval, numBody,numWorker)),
+        "worker"+workerID.toString)
 
     // activate worker
     val wArray = worker.toArray
