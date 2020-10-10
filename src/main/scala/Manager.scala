@@ -32,7 +32,7 @@ class Manager(val outputPath:String, val numWorker:Int, val numBody:Int,
 
     // create workers
     val numWaitPeer = numWorker-1
-    val Gravity = 100
+    val Gravity = 6.67e-11
     val dimension = 3
     val row_length = 7
     val worker=for(workerID<- 0 until numWorker)

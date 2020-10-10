@@ -130,8 +130,8 @@ class Worker(var mpvData:Array[Array[Double]], var peers:Array[ActorRef],
           mpvData(i)(4)+tMPV(i)(4), mpvData(i)(5)+tMPV(i)(5),
           mpvData(i)(6)+tMPV(i)(6)
         )}).toArray
-      println(self.path.name+"\n"
-              +mpvData.map(_.mkString(" ")).mkString("\n")+"\n")
+//      println(self.path.name+"\n"
+//              +mpvData.map(_.mkString(" ")).mkString("\n")+"\n")
       // refresh temporary value
       waitMsgNum = peerNum-1
       tMPV = Array.ofDim(numBody,7)
