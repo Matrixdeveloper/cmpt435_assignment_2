@@ -7,14 +7,38 @@
 
 import akka.actor.{Actor, ActorRef}
 
-
+/**
+ *  Responsible for calculate force & move bodies
+ *    -request task from manager
+ *    -generate body pairs
+ *    -calculate forces
+ *    -exchange forces
+ *    -calculate moves
+ *    -exchange move and update body records
+ *    -next interval
+ * @param mpvData all bodies data, mass, position, velocity
+ * @param peers actor reference of all workers
+ * @param myId actor id, it is used to avoid send message to self when exchange data
+ * @param waitMsgNum record how many message left to receive for current stage
+ * @param G record gravity constant
+ * @param tF record temporary forces
+ * @param tMPV record temporary moves
+ * @param DT record interval length
+ * @param numBody record number of body
+ * @param peerNum record number of worker
+ *
+ *    Why use redundant variable holds value? Unify value assign process
+ *      -every worker use the essential value initialized by manager
+ *      -avoid dynamically recalculate value
+ *      eg: number of body< array length of mpvdata>
+ *
+ */
 class Worker(var mpvData:Array[Array[Double]], var peers:Array[ActorRef],
              val myId:Int, var waitMsgNum:Int, val G:Double,
              var tF:Array[Array[Double]], var tMPV:Array[Array[Double]],
              val DT:Double,val numBody:Int, val peerNum:Int)extends Actor
 {
-  def receive: Receive =
-  {
+  def receive: Receive = {
     case BlockMSG(block_pair)             => calculateForce(block_pair)
     case ExchangeForceMSG(temp_forces)    => exchangeForce(temp_forces)
     case ExchangeMoveMSG(h,t,temp_moves)  => exchangeMove(h,t,temp_moves)
@@ -23,22 +47,31 @@ class Worker(var mpvData:Array[Array[Double]], var peers:Array[ActorRef],
     case InitWorkerMSG(peer_workers)      => init(peer_workers)
   }
 
-  def init(allPeers: Array[ActorRef]): Unit =
-  {
+  /**
+   * initialize worker and update peers reference
+   * @param allPeers array of peer worker reference
+   */
+  def init(allPeers: Array[ActorRef]): Unit = {
     peers = allPeers
     println(self.path.name+" >> ready")
     context.parent ! RequestBlocksMSG
   }
 
-  def leave(toLeave: Boolean): Unit =
-  {
+  /**
+   * decide how a worker will do when all work has been finished
+   * @param toLeave if true, directly leave; otherwise, report body data and then leave
+   */
+  def leave(toLeave: Boolean): Unit = {
     if(!toLeave) sender() ! WorkerReportMSG(mpvData)
     println(self.path.name+">>leave")
     context.stop(self)
   }
 
-  def calculateForce(t:(Int,Int)): Unit =
-  {
+  /**
+   * calculate force of argument task(block pair)
+   * @param t task/block pair
+   */
+  def calculateForce(t:(Int,Int)): Unit = {
     // once receive sentinel bag, exchange forces
     if(t==(-1,-1)){
       0 until peerNum foreach(i=>
@@ -76,8 +109,11 @@ class Worker(var mpvData:Array[Array[Double]], var peers:Array[ActorRef],
     context.parent ! RequestBlocksMSG
   }
 
-  def exchangeForce(nf:Array[Array[Double]]): Unit =
-  {
+  /**
+   * receive force from peer workers
+   * @param nf new force
+   */
+  def exchangeForce(nf:Array[Array[Double]]): Unit = {
     // count unreceived exchange msg
     waitMsgNum-=1
     // accumulate new force on temp force record
@@ -95,11 +131,13 @@ class Worker(var mpvData:Array[Array[Double]], var peers:Array[ActorRef],
     }
   }
 
-  def calculateMoves(): Unit =
-  {
+  /**
+   * calculate moves for body which belongs to this worker's block
+   */
+  def calculateMoves(): Unit = {
     val firstIndex = myId * (numBody / peerNum)
     val lastIndex = firstIndex + (numBody / peerNum)
-
+    // calculate moves belong to this worker's block
     firstIndex until lastIndex foreach(i=>{
       val m = mpvData(i)(0)
       val f = tF(i)
@@ -110,11 +148,18 @@ class Worker(var mpvData:Array[Array[Double]], var peers:Array[ActorRef],
       val dp =Array((vx+dv(0)/2)*DT,(vy+dv(1)/2)*DT,(vz+dv(2)/2)*DT)
       tMPV(i)=0.0+:dp.concat(dv)
     })
-
+    // broadcast moves
     0 until peerNum foreach(i=>
       if(i!=myId) peers(i) ! ExchangeMoveMSG(firstIndex,lastIndex,tMPV))
   }
 
+
+  /**
+   * receive moves from peer worker and apply move to body data
+   * @param first index of body number, indicate where the iteration start
+   * @param last  index, indicate where the iteration end
+   * @param nMPV new moves from other worker
+   */
   def exchangeMove(first:Int, last:Int, nMPV:Array[Array[Double]]): Unit =
   {
     waitMsgNum-=1
@@ -130,6 +175,7 @@ class Worker(var mpvData:Array[Array[Double]], var peers:Array[ActorRef],
           mpvData(i)(4)+tMPV(i)(4), mpvData(i)(5)+tMPV(i)(5),
           mpvData(i)(6)+tMPV(i)(6)
         )}).toArray
+      // print body data of this interval
 //      println(self.path.name+"\n"
 //              +mpvData.map(_.mkString(" ")).mkString("\n")+"\n")
       // refresh temporary value

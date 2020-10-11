@@ -6,19 +6,36 @@
 
 import akka.actor._
 
+
+/**
+ * create worker, manager worker, and collect data from worker
+ *
+ * @param outputPath save the output file path from initializer
+ * @param numWorker save the worker number
+ * @param numBody save the body number
+ * @param workerFree dynamically record the current free worker number
+ * @param Bags save the generated tasks
+ * @param BagIter index of tasks in bag
+ * @param numDT count how many interval remain
+ */
 class Manager(val outputPath:String, val numWorker:Int, val numBody:Int,
               var workerFree:Int, var Bags:Array[(Int,Int)],
               var BagIter: Int, var numDT:Int) extends Actor
 {
-  override def receive: Receive = {
+  override def receive: Receive =
+  {
     case a:StartMSG => buildFrame(a)
     case RequestBlocksMSG => respond()
     case WorkerReportMSG(final_mpvData) =>
       context.parent ! EndMSG(this.outputPath,numBody, final_mpvData)
       context.stop(self)
-    case _=> print("Manager: unexpected message from"+ context.sender)
+    case _=> print("Manager: unexpected message from"+ context.sender())
   }
 
+  /**
+   * create workers, generate task bag
+   * @param initMsg StartMSG, check MyMessage
+   */
   def buildFrame(initMsg:StartMSG): Unit =
   {
     // create task basket and initialize bag index
@@ -35,6 +52,7 @@ class Manager(val outputPath:String, val numWorker:Int, val numBody:Int,
     val Gravity = 6.67e-11
     val dimension = 3
     val row_length = 7
+    // generate worker and record reference to an array
     val worker=for(workerID<- 0 until numWorker)
       yield context.actorOf(Props(
         new Worker(initMsg.mpvdata, null,
@@ -50,24 +68,29 @@ class Manager(val outputPath:String, val numWorker:Int, val numBody:Int,
     println("Manager: Frame Set Up")
   }
 
+
+  /**
+   * control distributing tasks to workers, and collect result
+   */
   def respond(): Unit =
   {
     workerFree+=1
     // wait for remaining work to be done
     if(numDT>=1 && BagIter<Bags.length){
       // bags not all consumed
-      sender ! BlockMSG(Bags(BagIter))
+      sender() ! BlockMSG(Bags(BagIter))
       BagIter+=1;workerFree-=1
     }else if(numDT>1 && BagIter==Bags.length){
       // bags all consumed but have more interval to go
       println("Manager: Next interval")
       workerFree-=1
       BagIter = 0;numDT -= 1
-      sender ! BlockMSG(Bags(BagIter))
+      sender() ! BlockMSG(Bags(BagIter))
     }else if(numDT == 1 && BagIter==Bags.length){
       // bags and interval both consumed
-      if(workerFree<numWorker) sender ! TerminateWorkerMSG
-      else sender ! AskWorkerReportMSG
+      if(workerFree<numWorker) sender() ! TerminateWorkerMSG
+      // ask last worker report data
+      else sender() ! AskWorkerReportMSG
     }else{
       println("Manager: respond error")
     }
