@@ -33,11 +33,14 @@ import akka.actor.{Actor, ActorRef}
  *      eg: number of body< array length of mpvdata>
  *
  */
-class Worker(var mpvData:Array[Array[Double]], var peers:Array[ActorRef],
-             val myId:Int, var waitMsgNum:Int, val G:Double,
-             var tF:Array[Array[Double]], var tMPV:Array[Array[Double]],
-             val DT:Double,val numBody:Int, val peerNum:Int)extends Actor
-{
+class Worker(val myId:Int, val peerNum:Int,
+              val DT:Double,val numBody:Int,val G:Double,
+              var mpvData:Array[Array[Double]], var tMPV:Array[Array[Double]],
+              var myTF:Array[Array[Double]], var tF:Array[Array[Double]],
+              var peers:Array[ActorRef], var numDT:Int,
+              var waitMsgNum:Int,var waitMove:Int)
+  extends Actor {
+
   def receive: Receive = {
     case BlockMSG(block_pair)             => calculateForce(block_pair)
     case ExchangeForceMSG(temp_forces)    => exchangeForce(temp_forces)
@@ -45,6 +48,7 @@ class Worker(var mpvData:Array[Array[Double]], var peers:Array[ActorRef],
     case AskWorkerReportMSG               => leave(false)
     case TerminateWorkerMSG               => leave(true)
     case InitWorkerMSG(peer_workers)      => init(peer_workers)
+    case StartNextMSG() => context.parent ! RequestBlocksMSG
   }
 
   /**
@@ -54,6 +58,7 @@ class Worker(var mpvData:Array[Array[Double]], var peers:Array[ActorRef],
   def init(allPeers: Array[ActorRef]): Unit = {
     peers = allPeers
     println(self.path.name+" >> ready")
+    numDT-=1
     context.parent ! RequestBlocksMSG
   }
 
@@ -74,11 +79,10 @@ class Worker(var mpvData:Array[Array[Double]], var peers:Array[ActorRef],
   def calculateForce(t:(Int,Int)): Unit = {
     // once receive sentinel bag, exchange forces
     if(t==(-1,-1)){
-      0 until peerNum foreach(i=>
-        if(i!=myId) peers(i) ! ExchangeForceMSG(tF))
+      peers.foreach(w=>{w ! ExchangeForceMSG(myTF)})
       return
     }
-    // generate body pairs from block pair
+    // otherwise calculate forces for the task
     val bSize = numBody/peerNum
     val realTask = (
       for(i<-(t._1*bSize) until(t._1*bSize+bSize);
@@ -98,14 +102,13 @@ class Worker(var mpvData:Array[Array[Double]], var peers:Array[ActorRef],
       // calculate direction
       val dd = (p1(1)-p2(1), p1(2)-p2(2), p1(3)-p2(3))
       // accumulate result on my temp_force record
-      tF(twoBody._1)(0)=tF(twoBody._1)(0)+m*dd._1/d
-      tF(twoBody._2)(0)=tF(twoBody._2)(0)-m*dd._1/d
-      tF(twoBody._1)(1)=tF(twoBody._1)(1)+m*dd._2/d
-      tF(twoBody._2)(1)=tF(twoBody._2)(1)-m*dd._2/d
-      tF(twoBody._1)(2)=tF(twoBody._1)(2)+m*dd._3/d
-      tF(twoBody._2)(2)=tF(twoBody._2)(2)+m*dd._3/d
+      myTF(twoBody._1)(0) = myTF(twoBody._1)(0) + m*dd._1/d
+      myTF(twoBody._2)(0) = myTF(twoBody._2)(0) - m*dd._1/d
+      myTF(twoBody._1)(1) = myTF(twoBody._1)(1) + m*dd._2/d
+      myTF(twoBody._2)(1) = myTF(twoBody._2)(1) - m*dd._2/d
+      myTF(twoBody._1)(2) = myTF(twoBody._1)(2) + m*dd._3/d
+      myTF(twoBody._2)(2) = myTF(twoBody._2)(2) - m*dd._3/d
     })
-    // request next bag
     context.parent ! RequestBlocksMSG
   }
 
@@ -114,18 +117,18 @@ class Worker(var mpvData:Array[Array[Double]], var peers:Array[ActorRef],
    * @param nf new force
    */
   def exchangeForce(nf:Array[Array[Double]]): Unit = {
+    if(waitMsgNum == 0){
+      println("[][]"+self.path.name+"error "+waitMsgNum)
+    }
     // count unreceived exchange msg
     waitMsgNum-=1
-    // accumulate new force on temp force record
     tF = (for(i<-0 until numBody) yield
       Array(
         tF(i)(0)+nf(i)(0),
         tF(i)(1)+nf(i)(1),
         tF(i)(2)+nf(i)(2))
       ).toArray
-    // once receive all forces
     if(waitMsgNum==0){
-      waitMsgNum = peerNum-1
       println(self.path.name+">>>Successfully Exchange Force")
       calculateMoves()
     }
@@ -137,20 +140,23 @@ class Worker(var mpvData:Array[Array[Double]], var peers:Array[ActorRef],
   def calculateMoves(): Unit = {
     val firstIndex = myId * (numBody / peerNum)
     val lastIndex = firstIndex + (numBody / peerNum)
-    // calculate moves belong to this worker's block
-    firstIndex until lastIndex foreach(i=>{
-      val m = mpvData(i)(0)
-      val f = tF(i)
-      val dv =Array(f(0)/m*DT,f(1)/m*DT,f(2)/m*DT)
-      val vx = mpvData(i)(4)
-      val vy = mpvData(i)(5)
-      val vz = mpvData(i)(6)
-      val dp =Array((vx+dv(0)/2)*DT,(vy+dv(1)/2)*DT,(vz+dv(2)/2)*DT)
-      tMPV(i)=0.0+:dp.concat(dv)
-    })
-    // broadcast moves
-    0 until peerNum foreach(i=>
-      if(i!=myId) peers(i) ! ExchangeMoveMSG(firstIndex,lastIndex,tMPV))
+
+    // calculate moves for body belong to my block
+    val blockMove =
+      (for(i<-firstIndex until lastIndex)
+        yield {
+          val m = mpvData(i)(0)
+          val f = tF(i)
+          val dv =Array(f(0)/m*DT,f(1)/m*DT,f(2)/m*DT)
+          val vx = mpvData(i)(4)
+          val vy = mpvData(i)(5)
+          val vz = mpvData(i)(6)
+          val dp =Array((vx+dv(0)/2)*DT,(vy+dv(1)/2)*DT,(vz+dv(2)/2)*DT)
+          0.0+:dp.concat(dv)
+        }).toArray
+    //    var blockMove = Array.ofDim[Double](numBody/peerNum, 7)
+    // tell other moves in my block
+    peers.foreach(w=>{w ! ExchangeMoveMSG(firstIndex,lastIndex,blockMove)})
   }
 
 
@@ -160,28 +166,42 @@ class Worker(var mpvData:Array[Array[Double]], var peers:Array[ActorRef],
    * @param last  index, indicate where the iteration end
    * @param nMPV new moves from other worker
    */
-  def exchangeMove(first:Int, last:Int, nMPV:Array[Array[Double]]): Unit =
-  {
-    waitMsgNum-=1
-    // copy other block moves
-    first until last foreach(i=>tMPV(i)=nMPV(i))
-    // once receive all moves, update self record
-    if(waitMsgNum==0){
-      println(self.path.name+">>> Move")
-      mpvData = (for(i<-0 until numBody) yield {
-        Array(
-          mpvData(i)(0)+tMPV(i)(0), mpvData(i)(1)+tMPV(i)(1),
-          mpvData(i)(2)+tMPV(i)(2), mpvData(i)(3)+tMPV(i)(3),
-          mpvData(i)(4)+tMPV(i)(4), mpvData(i)(5)+tMPV(i)(5),
-          mpvData(i)(6)+tMPV(i)(6)
-        )}).toArray
-      // print body data of this interval
-//      println(self.path.name+"\n"
-//              +mpvData.map(_.mkString(" ")).mkString("\n")+"\n")
-      // refresh temporary value
-      waitMsgNum = peerNum-1
-      tMPV = Array.ofDim(numBody,7)
-      context.parent ! RequestBlocksMSG
+  def exchangeMove(first:Int, last:Int, nMPV:Array[Array[Double]]): Unit = {
+    waitMove -=1
+    // accumulate move
+    var j = 0
+    first until last foreach(i=>{tMPV(i)=nMPV(j);j+=1})
+
+
+    if(waitMove ==0){
+      // finish all moves in this interval
+      0 until numBody foreach(i=>{
+        mpvData(i)(0) = mpvData(i)(0)+tMPV(i)(0)
+        mpvData(i)(1) = mpvData(i)(1)+tMPV(i)(1)
+        mpvData(i)(2) = mpvData(i)(2)+tMPV(i)(2)
+        mpvData(i)(3) = mpvData(i)(3)+tMPV(i)(3)
+        mpvData(i)(4) = mpvData(i)(4)+tMPV(i)(4)
+        mpvData(i)(5) = mpvData(i)(5)+tMPV(i)(5)
+        mpvData(i)(6) = mpvData(i)(6)+tMPV(i)(6)
+      })
+
+      // reset state
+      waitMsgNum=peerNum
+      waitMove = peerNum
+
+      // clear temp data, myTF, tF, tMPV
+      0 until numBody foreach(i=>{
+        myTF(i) = Array.ofDim[Double](3)
+        tF(i) = Array.ofDim[Double](3)
+        tMPV(i) = Array.ofDim[Double](7)
+      })
+
+      println(self.path.name+"[posdata]\n"
+        +mpvData.map(_.mkString(" ")).mkString("\n")+"\n")
+
+      println(self.path.name+">>> Move done")
+      if (numDT ==0) context.parent ! AllFinishMSG
+      else {numDT-=1;context.parent ! WaitNextIntervalMSG}
     }
   }
 }

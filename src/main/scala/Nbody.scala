@@ -54,9 +54,9 @@ class Nbody extends Actor {
     // create manager
     val manager = context.actorOf(Props(
       new Manager(msg.outputPath,msg.numWorker,numBody,
-        0,null,0,msg.numDeltaTime)), "Manager")
+        0,null,0, null)), "Manager")
     // activate manager
-    manager ! StartMSG(bodyData, msg.DeltaTime)
+    manager ! StartMSG(bodyData, msg.numDeltaTime,msg.DeltaTime)
   }
 
   /**
@@ -104,7 +104,7 @@ object NbodyMain {
     // if no argument provide, using default argument and input file
     if(args.length == 0){
       inputFile = "myInput.txt";outputFile = "sampleOutput.txt"
-      interval = 1.0;numInterval = 2; numWorker = 4
+      interval = 1.0;numInterval =10; numWorker = 4
     }else{
       // args.length == 5
       // validating input arguments

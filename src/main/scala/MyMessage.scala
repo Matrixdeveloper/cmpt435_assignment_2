@@ -1,4 +1,5 @@
 import akka.actor.ActorRef
+import akka.dispatch.ControlMessage
 //CMPT435 2020 Fall term
 //Assignment2: N-body
 //Name: Yue Weng
@@ -27,7 +28,8 @@ case class InitMSG(inputPath: String, outputPath: String,
  *  each subarray length == 7, 1 for mess, 3 for position, 3 for velocity
  * @param interval, Double, length of each interval
  */
-case class StartMSG(mpvdata:Array[Array[Double]], interval:Double) extends MyMessage
+case class StartMSG(mpvdata:Array[Array[Double]],
+                    numInterval:Int,interval:Double) extends MyMessage
 
 // Send by manager
 /**
@@ -46,12 +48,12 @@ case class BlockMSG(block_pair:(Int,Int)) extends MyMessage
 /**
  * for telling worker report the nbody data it holds
  */
-case class AskWorkerReportMSG() extends MyMessage
+case object AskWorkerReportMSG extends MyMessage
 
 /**
  * for telling worker terminate itself
  */
-case class TerminateWorkerMSG() extends MyMessage
+case object TerminateWorkerMSG extends MyMessage
 
 /**
  * for returning simulation result to initializer
@@ -67,7 +69,7 @@ case class EndMSG(outputPath:String,numBody:Int,finalResult:Array[Array[Double]]
 /**
  * for request task from manager
  */
-case class RequestBlocksMSG()extends MyMessage
+case object RequestBlocksMSG extends MyMessage
 
 /**
  * for broadcast temporary force data with peers
@@ -89,3 +91,7 @@ case class ExchangeMoveMSG(blockHead:Int,blockTail:Int, temp_move: Array[Array[D
  */
 case class WorkerReportMSG(final_body_data: Array[Array[Double]]) extends MyMessage
 
+case class StartNextMSG()extends MyMessage
+
+case object WaitNextIntervalMSG extends MyMessage
+case object AllFinishMSG extends MyMessage

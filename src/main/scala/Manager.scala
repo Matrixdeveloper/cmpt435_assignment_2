@@ -16,16 +16,17 @@ import akka.actor._
  * @param workerFree dynamically record the current free worker number
  * @param Bags save the generated tasks
  * @param BagIter index of tasks in bag
- * @param numDT count how many interval remain
  */
 class Manager(val outputPath:String, val numWorker:Int, val numBody:Int,
-              var workerFree:Int, var Bags:Array[(Int,Int)],
-              var BagIter: Int, var numDT:Int) extends Actor
+               var workerFree:Int, var Bags:Array[(Int,Int)],
+               var BagIter: Int, var workers:List[ActorRef]) extends Actor
 {
   override def receive: Receive =
   {
     case a:StartMSG => buildFrame(a)
     case RequestBlocksMSG => respond()
+    case WaitNextIntervalMSG =>respond2()
+    case AllFinishMSG =>respond3()
     case WorkerReportMSG(final_mpvData) =>
       context.parent ! EndMSG(this.outputPath,numBody, final_mpvData)
       context.stop(self)
@@ -38,9 +39,10 @@ class Manager(val outputPath:String, val numWorker:Int, val numBody:Int,
    */
   def buildFrame(initMsg:StartMSG): Unit =
   {
+    println("Manager2")
     // create task basket and initialize bag index
     Bags = (for(i<-0 until numWorker; j<-0 until numWorker)
-        yield(i,j)).filter(p=>p._2>=p._1).toArray
+      yield(i,j)).filter(p=>p._2>=p._1).toArray
 
     // add sentinel indicate task of current interval have done
     val sentinel = (for(_<- 1 to numWorker)yield (-1,-1)).toArray
@@ -48,54 +50,66 @@ class Manager(val outputPath:String, val numWorker:Int, val numBody:Int,
     BagIter = 0
 
     // create workers
-    val numWaitPeer = numWorker-1
-    val Gravity = 6.67e-11
+    val gravity = 6.67e-11
     val dimension = 3
     val row_length = 7
     // generate worker and record reference to an array
-    val worker=for(workerID<- 0 until numWorker)
+    val worker = for(workerID<-0 until numWorker)
       yield context.actorOf(Props(
-        new Worker(initMsg.mpvdata, null,
-          workerID, numWaitPeer, Gravity,
-          Array.ofDim(numBody,dimension),
-          Array.ofDim(numBody,row_length),
-          initMsg.interval, numBody,numWorker)),
+        new Worker(workerID, //id of each worker
+          numWorker, //number of workers
+          initMsg.interval, // length of each interval
+          numBody, // number of bodies
+          gravity, // gravity constant
+          initMsg.mpvdata, // initial body data from input file
+          Array.ofDim(numBody,row_length), // temp mpv data for apply moves
+          Array.ofDim(numBody,dimension), // temp force from this worker
+          Array.ofDim(numBody,dimension), // temp force other worker
+          null,
+          initMsg.numInterval,
+          numWorker,numWorker)),
         "worker"+workerID.toString)
 
     // activate worker
     val wArray = worker.toArray
-    worker.foreach(w=>w ! InitWorkerMSG(wArray))
     println("Manager: Frame Set Up")
+    worker.foreach(w=>w ! InitWorkerMSG(wArray))
   }
 
 
   /**
    * control distributing tasks to workers, and collect result
    */
-  def respond(): Unit =
-  {
-    workerFree+=1
-    // wait for remaining work to be done
-    if(numDT>=1 && BagIter<Bags.length){
-      // bags not all consumed
-      sender() ! BlockMSG(Bags(BagIter))
-      BagIter+=1;workerFree-=1
-    }else if(numDT>1 && BagIter==Bags.length){
-      // bags all consumed but have more interval to go
-      println("Manager: Next interval")
-      workerFree-=1
-      BagIter = 0;numDT -= 1
-      sender() ! BlockMSG(Bags(BagIter))
-    }else if(numDT == 1 && BagIter==Bags.length){
-      // bags and interval both consumed
-      if(workerFree<numWorker) sender() ! TerminateWorkerMSG
-      // ask last worker report data
-      else sender() ! AskWorkerReportMSG
+  def respond(): Unit = {
+    sender() ! BlockMSG(Bags(BagIter))
+    BagIter+=1
+  }
+
+  def respond2(): Unit = {
+    workerFree += 1
+    if(workerFree == 1){
+      workers = List(sender())
     }else{
-      println("Manager: respond error")
+      workers = workers.appended(sender())
+    }
+
+    if(workerFree==numWorker){
+      workerFree = 0
+      BagIter = 0
+      println("Manager: next interval")
+      workers.foreach(w=>{
+        w ! BlockMSG(Bags(BagIter))
+        BagIter+=1
+      })
+    }
+  }
+
+  def respond3(): Unit ={
+    if(workerFree<numWorker-1){
+      workerFree+=1
+      sender() ! TerminateWorkerMSG
+    }else{
+      sender() ! AskWorkerReportMSG
     }
   }
 }
-
-
-
