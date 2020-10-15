@@ -1,5 +1,5 @@
 import akka.actor.ActorRef
-import akka.dispatch.ControlMessage
+
 //CMPT435 2020 Fall term
 //Assignment2: N-body
 //Name: Yue Weng
@@ -91,7 +91,7 @@ case class ExchangeMoveMSG(blockHead:Int,blockTail:Int, temp_move: Array[Array[D
  */
 case class WorkerReportMSG(final_body_data: Array[Array[Double]]) extends MyMessage
 
-case class StartNextMSG()extends MyMessage
+case object StartNextMSG extends MyMessage
 
 case object WaitNextIntervalMSG extends MyMessage
 case object AllFinishMSG extends MyMessage

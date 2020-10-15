@@ -48,7 +48,7 @@ class Worker(val myId:Int, val peerNum:Int,
     case AskWorkerReportMSG               => leave(false)
     case TerminateWorkerMSG               => leave(true)
     case InitWorkerMSG(peer_workers)      => init(peer_workers)
-    case StartNextMSG() => context.parent ! RequestBlocksMSG
+    case StartNextMSG => context.parent ! RequestBlocksMSG
   }
 
   /**
@@ -59,7 +59,7 @@ class Worker(val myId:Int, val peerNum:Int,
     peers = allPeers
     println(self.path.name+" >> ready")
     numDT-=1
-    context.parent ! RequestBlocksMSG
+    context.sender() ! RequestBlocksMSG
   }
 
   /**
@@ -168,10 +168,9 @@ class Worker(val myId:Int, val peerNum:Int,
    */
   def exchangeMove(first:Int, last:Int, nMPV:Array[Array[Double]]): Unit = {
     waitMove -=1
-    // accumulate move
+    // aggregate move
     var j = 0
     first until last foreach(i=>{tMPV(i)=nMPV(j);j+=1})
-
 
     if(waitMove ==0){
       // finish all moves in this interval
@@ -196,10 +195,13 @@ class Worker(val myId:Int, val peerNum:Int,
         tMPV(i) = Array.ofDim[Double](7)
       })
 
-      println(self.path.name+"[posdata]\n"
-        +mpvData.map(_.mkString(" ")).mkString("\n")+"\n")
+      // If want to dynamically output body data for each interval
+      // uncomment follow lines
+//      println(self.path.name+"[body data]\n"
+//        +mpvData.map(_.mkString(" ")).mkString("\n")+"\n")
 
       println(self.path.name+">>> Move done")
+      // decide if start next interval
       if (numDT ==0) context.parent ! AllFinishMSG
       else {numDT-=1;context.parent ! WaitNextIntervalMSG}
     }

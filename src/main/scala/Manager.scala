@@ -78,13 +78,19 @@ class Manager(val outputPath:String, val numWorker:Int, val numBody:Int,
 
 
   /**
-   * control distributing tasks to workers, and collect result
+   * react to RequireBlockMSG
+   * distributing tasks to workers
    */
   def respond(): Unit = {
     sender() ! BlockMSG(Bags(BagIter))
     BagIter+=1
   }
 
+  /**
+   * react to WaitNextIntervalMSG
+   * -collect free workers until all worker finish current interval
+   * -distribute tasks in arriving order for new interval
+   */
   def respond2(): Unit = {
     workerFree += 1
     if(workerFree == 1){
@@ -104,6 +110,10 @@ class Manager(val outputPath:String, val numWorker:Int, val numBody:Int,
     }
   }
 
+  /**
+   * react to AllFinishMSG
+   * -tell last worker to report its data
+   */
   def respond3(): Unit ={
     if(workerFree<numWorker-1){
       workerFree+=1
